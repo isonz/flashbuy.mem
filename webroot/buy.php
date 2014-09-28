@@ -52,24 +52,30 @@ if($moinfo){
 	$json = Func::curlPost(CREATEORDER, $data);
 	$data = json_decode($json, true);
 	$error = isset($data['error']) ? $data['error'] : 1;
-	if(!$error || 3==$error){	//2:没有默认地址，3:重复订单
-		if(!$error)	if(!IMemcached::incrementOne('pnumb')) IMemcached::addOne('pnumb', 1, 24*3600);
+	if(!$error){
+		if(!IMemcached::incrementOne('pnumb')) IMemcached::addOne('pnumb', '1', 24*3600);
+		IMemcached::delOne($mokey);  //删除订单队列中的元素
+		$user['orded'] = 1;  //在用户数据里标记已经抢到过
+		//保证_head不大于_tail
+		$mohead1 = IMemcached::incrementOne(_MEMORDER."_head");
+		$motail = IMemcached::getOne(_MEMORDER.'_tail');
+		if($mohead1 > $motail) $mohead1 = IMemcached::decrementOne(_MEMORDER."_head");
+		//保存已经消除的key,用于检测是否为过期的KEY
+		IMemcached::addOne("Del_".$mokey, '1', 24*3600);
+	}
+	if(3==$error){			//3:重复订单
 		IMemcached::delOne($mokey);  //删除订单队列中的元素
 		$user['orded'] = 1;  //在用户数据里标记已经抢到过
 	}
 	$user['time'] = time();
 	IMemcached::setOne($token, $user, _MEMUSEREXP);
-	//保证_head不大于_tail
-	$mohead1 = IMemcached::incrementOne(_MEMORDER."_head");
-	$motail = IMemcached::getOne(_MEMORDER.'_tail');
-	if($mohead1 > $motail) $mohead1 = IMemcached::decrementOne(_MEMORDER."_head");
 	exit($json);
 }
 
 //----检查ORDER队列的数量，少于_ONUMB时加入进去
-$mohead = IMemcached::getOne(_MEMORDER.'_head');
-$motail = IMemcached::getOne(_MEMORDER.'_tail');
-var_dump($mohead,$motail);
+$mohead = (int)IMemcached::getOne(_MEMORDER.'_head');
+$motail = (int)IMemcached::getOne(_MEMORDER.'_tail');
+var_dump($mohead,$motail, $mokey);
 if(!$mohead || !$motail || ($motail - $mohead) < _ONUMB){
 	if(!$moinfo && !$mokey){	//用户中存储了mokey,下订单时删除了内存的mokey，所以重复请求时不再添加到MEM内存
     	$moinfo = MemQueue::add(_MEMORDER, $username, _MEMEXP_OD);
@@ -77,16 +83,12 @@ if(!$mohead || !$motail || ($motail - $mohead) < _ONUMB){
     	$mokey = _MEMORDER."_".$moid;
     	$user['mokey'] = $mokey;
 		IMemcached::delOne($mqkey);		//删除排队队列中的元素
-        IMemcached::incrementOne(_MEMQUEUE."_head");
-		//处理过期的ORDER队列
-		for($i=$mohead; $i<=$motail; $i++){
-			if(false === IMemcached::getOne(_MEMORDER."_".$i)) IMemcached::incrementOne(_MEMORDER."_head");
-		}
 	}
 }
 
 //检查是否在等候队列
 $mqinfo = null;
+var_dump($mqkey);
 if($mqkey) $mqinfo = IMemcached::getOne($mqkey);
 if(!$mqinfo){
 	$mqinfo = MemQueue::add(_MEMQUEUE, $username, _MEMEXP_PD);
@@ -101,8 +103,8 @@ if(!$mqinfo){
 $user['time'] = time();	//保存本次访问的时间，防止频繁访问
 IMemcached::setOne($token, $user, _MEMUSEREXP);
 
-$mqhead = IMemcached::getOne(_MEMQUEUE.'_head');
-$mqtail = IMemcached::getOne(_MEMQUEUE.'_tail');
+$mqhead = (int)IMemcached::getOne(_MEMQUEUE.'_head');
+$mqtail = (int)IMemcached::getOne(_MEMQUEUE.'_tail');
 exit(json_encode(array('error'=>1,'msg'=>"队列中", 'data'=>array($mqhead, $mqtail))));
 
 

@@ -16,10 +16,9 @@ if($count > 0){
 }
 
 //处理过期的ORDER队列
-$mohead = IMemcached::getOne(_MEMORDER.'_head');
-$motail = IMemcached::getOne(_MEMORDER.'_tail');
-for($i=$mohead; $i<=$motail; $i++){
-	if(false === IMemcached::getOne(_MEMORDER."_".$i)) IMemcached::incrementOne(_MEMORDER."_head");
+$motail = (int)IMemcached::getOne(_MEMORDER.'_tail');
+for($i=1; $i<=$motail; $i++){
+	if(false === IMemcached::getOne(_MEMORDER."_".$i) && false === IMemcached::getOne("Del_"._MEMORDER."_".$i)) IMemcached::incrementOne(_MEMORDER."_head");
 }
 
 //记录日志

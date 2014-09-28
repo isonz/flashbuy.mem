@@ -38,12 +38,12 @@ class MemQueue
 	{
 		$id = IMemcached::incrementOne($queue."_tail");
 		if(false === $id){
-			if(false === IMemcached::addOne($queue."_tail", 1, 24*3600)){
+			if(false === IMemcached::addOne($queue."_tail", '1', 24*3600)){
 				$id = IMemcached::incrementOne($queue."_tail");
 				if(false === $id) return false;
 			}else{
 				$id = 1;
-				IMemcached::addOne($queue."_head", $id, 24*3600);
+				IMemcached::addOne($queue."_head", "0", 24*3600);
 			}
 		}
 		$value = array('id'=>$id,'value'=>$value);
